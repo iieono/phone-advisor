@@ -1,0 +1,44 @@
+# Full stack: the chat app + a local Ollama server, no host setup needed.
+#
+#   docker compose up
+#
+# On first run it downloads the model (a few GB) into a named volume, then the
+# app comes up at http://localhost:8501. The model is cached for next time.
+
+services:
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: pulls the model into Ollama, then exits.
+  model-puller:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${OLLAMA_MODEL:-qwen2.5:3b}"]
+    restart: "no"
+
+  app:
+    build: .
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    ports:
+      - "8501:8501"
+    depends_on:
+      model-puller:
+        condition: service_completed_successfully
+
+volumes:
+  ollama:
